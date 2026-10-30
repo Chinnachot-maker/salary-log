@@ -85,11 +85,15 @@ select{width:100%;padding:12px;border:1px solid var(--br);border-radius:12px;bac
 .hero.neg{background:linear-gradient(135deg,#dc2626,#7f1d1d)}
 .ex-av{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:14px}.ex-av b{margin-left:auto;font-variant-numeric:tabular-nums}.ex-av.neg b{color:var(--bad)}
 .kp .sub svg{color:var(--ac)}
+.due{margin:0 0 12px;padding:10px 14px;border-radius:14px;background:color-mix(in srgb,#d97706 14%,var(--card));border:1px solid #d97706;font-size:13px;cursor:pointer}
+.due b{display:block;margin-bottom:4px;color:#d97706;font-size:14px}
+.due.late{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--card))}.due.late b{color:var(--bad)}
 </style>
 </head>
 <body>
 <header class="top"><div class="ey" id="ey">บันทึกการทำงาน</div><h1 id="ttl">ภาพรวมเงินเดือน</h1></header>
 <main>
+  <div id="dueBanner" class="due hide"></div>
   <section id="dash"></section>
   <section id="cal" class="hide"></section>
   <section id="entry" class="hide">
@@ -174,6 +178,19 @@ function bars(data,H){
   return s;
 }
 const fail=(box,e)=>box.replaceChildren(h('div',{className:'card bad'},e.message));
+
+/* ---------- due reminders ---------- */
+async function loadDue(){
+  const el=$('dueBanner');
+  try{
+    const list=await run('getDueReminders');
+    if(!list||!list.length){el.className='due hide';return}
+    el.className='due'+(list.some(x=>x.daysLeft<0)?' late':'');
+    el.replaceChildren(h('b',{},ico('alert',16),'ใกล้ครบกำหนดจ่าย ('+list.length+' รายการ)'),
+      ...list.map(x=>h('div',{},x.item+(x.amount?' · '+x.amount+' บาท':'')+' — '+(x.daysLeft<0?'เลยกำหนด '+(-x.daysLeft)+' วัน':x.daysLeft===0?'ครบกำหนดวันนี้':'อีก '+x.daysLeft+' วัน'))));
+    el.onclick=()=>tab('exp');
+  }catch(e){el.className='due hide'}
+}
 
 /* ---------- dashboard ---------- */
 async function renderDash(){
@@ -307,7 +324,7 @@ async function chStatus(it,k,b){
   if(k==='จ่ายแล้ว'){payDlg(it);return}
   if(it.status==='จ่ายแล้ว'&&S.exp.undo!==it.row+k){S.exp.undo=it.row+k;b.textContent='แตะอีกครั้งเพื่อยืนยัน';return}
   S.exp.undo=null;b.disabled=true;
-  try{S.exp.data=await run('setExpenseStatus',{sheet:S.exp.sheet,row:it.row,name:it.name,status:k});drawExp();toast('เปลี่ยนเป็น "'+k+'" แล้ว')}
+  try{S.exp.data=await run('setExpenseStatus',{sheet:S.exp.sheet,row:it.row,name:it.name,status:k});drawExp();loadDue();toast('เปลี่ยนเป็น "'+k+'" แล้ว')}
   catch(e){toast(e.message);b.disabled=false}
 }
 function itemCard(it){
@@ -348,7 +365,7 @@ function payDlg(it){
   const go=async w=>{if(!dt.value){msg.textContent='เลือกวันที่จ่าย';return}
     ok.disabled=no.disabled=true;msg.className='sub';msg.textContent='กำลังบันทึก…';
     try{S.exp.data=await run('payExpense',{sheet:S.exp.sheet,row:it.row,name:it.name,date:dt.value,mime:w?img.mime:'',data:w?img.data:''});
-      ov.remove();drawExp();toast('บันทึกจ่ายแล้ว ✓')}
+      ov.remove();drawExp();loadDue();toast('บันทึกจ่ายแล้ว ✓')}
     catch(e){msg.className='sub bad';msg.textContent=e.message;ok.disabled=!img;no.disabled=false}};
   ok.onclick=()=>go(true);no.onclick=()=>go(false);document.body.append(ov);
 }
@@ -376,7 +393,7 @@ function tab(t){
     const b=await run('bootstrap');S.today=b.today;$('date').value=b.today;$('ey').textContent='บันทึกการทำงาน · ปี '+b.year;
     [{code:'',label:'ไม่ระบุ'}].concat(b.codes).forEach(c=>{const x=h('button',{className:'st',onclick:()=>setStatus(c.code.toUpperCase())},h('b',{},c.code||'—'),h('span',{},c.label));x.dataset.c=c.code.toUpperCase();$('sts').append(x)});
   }catch(e){$('dash').replaceChildren(h('div',{className:'card bad'},e.message))}
-  tab('dash');
+  tab('dash');loadDue();
 })();
 </script>
 </body>
