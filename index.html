@@ -91,6 +91,13 @@ select{width:100%;padding:12px;border:1px solid var(--br);border-radius:12px;bac
 .ck{padding:10px 0;border-top:1px solid var(--br);font-size:14px;cursor:pointer;position:relative;padding-right:18px}.ck .go{position:absolute;right:2px;top:10px;font-style:normal;font-size:20px;color:var(--mut)}
 .sel{max-width:58%;padding:8px;border:1px solid var(--br);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit;font-size:13px}
 .ck:first-of-type{border-top:0}.ck b{margin-right:8px}
+.chip.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.tb{padding:12px 14px}.tr{display:grid;grid-template-columns:50px 1.15fr 1fr 46px;gap:6px;padding:9px 0;border-top:1px solid var(--br);cursor:pointer;align-items:start;font-size:13px}
+.tr.hd{font-size:11px;color:var(--mut);cursor:default;border-top:0;padding:4px 0}.tr .d b{display:block;font-size:14px}.tr.hol .d b{color:var(--bad)}.tr small{display:block;color:var(--mut);font-size:11px;line-height:1.3}
+.tr .m{font-variant-numeric:tabular-nums;line-height:1.35}.tr .m.x{color:var(--bad);font-weight:600}.tr.bd{background:color-mix(in srgb,var(--bad) 4%,transparent)}
+.tr .is{grid-column:1/-1;font-size:12px;color:var(--mut)}.tr .is div{margin-top:3px}.tr .is .tg{margin-right:2px}
+.tg.bad{background:color-mix(in srgb,var(--bad) 14%,var(--card));color:var(--bad)}.tg.warn{background:color-mix(in srgb,#d97706 16%,var(--card));color:#d97706}
+.tg{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600}
 .ck .tg{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;background:color-mix(in srgb,#d97706 16%,var(--card));color:#d97706}
 .ck.bad .tg{background:color-mix(in srgb,var(--bad) 14%,var(--card));color:var(--bad)}.ck div{color:var(--mut);margin-top:3px;font-size:13px}
 </style>
@@ -210,12 +217,12 @@ const fh=x=>String(Math.round(x*100)/100);
 const isVac=x=>x.name.indexOf('พักร้อน')>=0;
 const lkey=x=>x.name+(x.full?' · เต็มวัน':' · บางส่วน');
 function parseTime(rows){
-  const hd=hdOf(rows),c={d:ci(hd,'วันที่มีผล'),i:ci(hd,'บันทึกเวลาเข้า'),o:ci(hd,'บันทึกเวลาออก'),s:ci(hd,'ลาป่วย'),b:ci(hd,'ลากิจ'),v:ci(hd,'ลาพักร้อน'),x:ci(hd,'ลาอื่น'),a:ci(hd,'OT1.5('),e:ci(hd,'OT2('),f:ci(hd,'OT3(')};
+  const hd=hdOf(rows),c={d:ci(hd,'วันที่มีผล'),i:ci(hd,'บันทึกเวลาเข้า'),o:ci(hd,'บันทึกเวลาออก'),s:ci(hd,'ลาป่วย'),b:ci(hd,'ลากิจ'),v:ci(hd,'ลาพักร้อน'),x:ci(hd,'ลาอื่น'),y:ci(hd,'สถานะวัน'),a:ci(hd,'OT1.5('),e:ci(hd,'OT2('),f:ci(hd,'OT3(')};
   if(c.d<0||c.i<0)throw new Error('ไฟล์เวลาทำงานไม่มีคอลัมน์ "วันที่มีผล" หรือ "บันทึกเวลาเข้า"');
   const T={};
   rows.slice(1).forEach(r=>{const iso=isoOf(r[c.d]);if(!iso)return;
     const lv=[];[['ลาป่วย',c.s],['ลากิจ',c.b],['ลาพักร้อน',c.v],['ลาอื่นๆ',c.x]].forEach(([n,k])=>{const m=minsOf(gv(r,k));if(m>0)lv.push({name:n,h:m/60,full:m>=480})});
-    T[iso]={in:tmOf(r[c.i]),out:tmOf(gv(r,c.o)),leaves:lv,ot:minsOf(gv(r,c.a))+minsOf(gv(r,c.e))+minsOf(gv(r,c.f))}});
+    T[iso]={day:String(gv(r,c.y)),in:tmOf(r[c.i]),out:tmOf(gv(r,c.o)),leaves:lv,ot:minsOf(gv(r,c.a))+minsOf(gv(r,c.e))+minsOf(gv(r,c.f))}});
   return T;
 }
 function parseLeave(rows){
@@ -243,50 +250,75 @@ function autoCode(key,codes){
   codes.forEach(c=>{if(!c.code)return;const lb=String(c.label).replace(/\s/g,'');let s=0;
     if(core&&lb.indexOf(core)>=0)s=3;else if(core.length>=3&&lb.indexOf(core.slice(0,3))>=0)s=2;
     if(!s)return;if(pct){if(lb.indexOf(pct)<0)return;s+=2}
+    ['ธุระ','ส่วนตัว'].forEach(w=>{if(name.indexOf(w)>=0)s+=lb.indexOf(w)>=0?2:-3;else if(lb.indexOf(w)>=0)s-=2});
+    if(s<=0)return;
     if(part===/ครึ่ง|บางส่วน|ชั่วโมง/.test(lb))s+=1;
     if(s>bs){bs=s;best=String(c.code).toUpperCase()}});
   return best;
 }
-// เทียบข้อมูลบริษัท (T,L) กับที่ลงในแอป (log) -> {issues,total,ok}
+// เวลาเริ่มงานที่ใช้คิด: สแกนไม่เกิน 08:00 = 08:00, เกินปัดขึ้นทีละ 30 นาที; สแกนหลังเที่ยง (ลาครึ่งวันเช้า) ฐานคือ 13:00
+function effIn(scan){const m=tMin(scan);if(m===null)return null;const base=m>=720?780:480;return m<=base?base:base+Math.ceil((m-base)/30)*30}
+const mm=m=>m===null?'':p2(Math.floor(m/60))+':'+p2(m%60);
+// เวลาออกที่ใช้คิด: 17:00-17:30 = เลิกงานปกติ, หลัง 17:30 นับ OT ทีละ 30 นาที
+const outN=m=>m<1020?m:m<1050?1020:1050+Math.floor((m-1050)/30)*30;
+// เทียบข้อมูลบริษัท (T,L) กับที่ลงในแอป (log) -> {rows,issues,total,ok}
 function diffChk(T,L,log,from,to,opt){
   opt=opt||{};const map=opt.map||{},tol=opt.tol||0,codes=opt.codes||[];
   const lab=c=>{const f=codes.find(x=>String(x.code).toUpperCase()===String(c||'').toUpperCase());return f?f.label:''};
   const A={};log.forEach(a=>{A[a.date]=a});
   const dates=Array.from(new Set(Object.keys(T).concat(Object.keys(A)))).filter(d=>d>=from&&d<=to).sort();
-  const issues=[];let total=0,ok=0;
+  const issues=[],rows=[];let total=0,ok=0;
   dates.forEach(d=>{
-    const t=T[d],a=A[d]||{},lv=leavesOf(T,L,d);
+    const t=T[d],a=A[d]||{},lv=leavesOf(T,L,d),all=lv.ok.concat(lv.pend);
     const aOT=numv(a.ot),aVac=numv(a.vac),logged=!!(a.in||a.out||a.status||aVac>0);
     let cVac=0,pVac=0;lv.ok.forEach(x=>{if(isVac(x))cVac+=x.h});lv.pend.forEach(x=>{if(isVac(x))pVac+=x.h});
     const others=lv.ok.filter(x=>!isVac(x)),cOT=t?t.ot/60:0,scan=!!(t&&(t.in||t.out));
-    if(!t&&!logged&&!lv.ok.length&&!lv.pend.length)return;
-    total++;const n0=issues.length,fix={},add=(lvl,tag,text)=>issues.push({d:d,lvl:lvl,tag:tag,text:text,fix:fix});
-    // 1) เวลาเข้า-ออก (สำคัญที่สุด) – ยึดตามไฟล์บริษัท
-    if(scan&&!logged){add('warn','ยังไม่ได้ลง','มีบันทึกเวลาในระบบบริษัท ('+(t.in||'?')+'–'+(t.out||'?')+') แต่ในแอปยังไม่ได้ลงวันนี้');fix.tin=t.in;fix.tout=t.out}
+    if(!t&&!logged&&!all.length)return;
+    const cHol=!!(t&&/หยุด/.test(t.day||'')),eff=t&&t.in?effIn(t.in):null,effS=eff===null?'':mm(eff);
+    const row={d:d,hol:cHol,cIn:effS,cScan:t?t.in:'',cOut:t?t.out:'',aIn:a.in||'',aOut:a.out||'',cOT:cOT,aOT:aOT,status:a.status||'',aStatus:lab(a.status),leaves:all,issues:[],fix:{},timeBad:false,otBad:false};
+    const fix=row.fix;total++;
+    const add=(lvl,tag,text)=>{const o={d:d,lvl:lvl,tag:tag,text:text,fix:fix};issues.push(o);row.issues.push(o)};
+    // 0) ประเภทวัน (ทำงาน/หยุด) ต้องตรงกับบริษัท – เพราะสูตรคิดต่างกัน
+    const ak=a.type?(/ทำงาน|ปกติ/.test(a.type)?'w':/หยุด/.test(a.type)?'h':''):'';
+    if(t&&ak&&((ak==='h')!==cHol))add('bad','ประเภทวันไม่ตรง','บริษัท: '+(t.day||'-')+' · แอป: '+a.type+' (แก้ที่ชีตวันหยุด ไม่ใช่ในหน้าบันทึก)');
+    // 1) เวลาเข้า-ออก (สำคัญที่สุด) – ยึดไฟล์บริษัท
+    if(scan&&!logged){add('warn','ยังไม่ได้ลง','มีบันทึกเวลาในระบบบริษัท (สแกน '+(t.in||'?')+'–'+(t.out||'?')+') แต่ในแอปยังไม่ได้ลงวันนี้');fix.tin=effS||t.in;fix.tout=t.out;row.timeBad=true}
     else if(scan){
-      const dif=[];[['เข้า','in'],['ออก','out']].forEach(([lb,k])=>{if(!t[k])return;const x=tMin(a[k]),y=tMin(t[k]);
-        if(x===null)dif.push(lb+' ยังไม่ได้ลง (บริษัท '+t[k]+')');else if(Math.abs(x-y)>tol)dif.push(lb+' แอป '+a[k]+' → บริษัท '+t[k])});
-      if(dif.length){add('bad','เวลาไม่ตรง',dif.join(' · '));if(t.in)fix.tin=t.in;if(t.out)fix.tout=t.out}
-    }else if(a.in||a.out)add('warn','ไม่มีเวลาในระบบบริษัท','แอปลงเวลา '+(a.in||'?')+'–'+(a.out||'?')+' แต่ระบบบริษัทไม่มีบันทึกเวลาวันนี้');
+      const dif=[];
+      if(t.in){const x=tMin(a.in);
+        if(x===null)dif.push('เข้า ยังไม่ได้ลง (ใช้คิด '+effS+')');
+        else if(Math.abs(x-eff)>tol)dif.push('เข้า แอป '+a.in+' → ใช้คิด '+effS+(effS!==t.in?' (สแกน '+t.in+')':''))}
+      if(t.out){const x=tMin(a.out),y=tMin(t.out);
+        if(x===null)dif.push('ออก ยังไม่ได้ลง (บริษัท '+t.out+')');
+        else if(Math.abs(outN(x)-outN(y))>tol)dif.push('ออก แอป '+a.out+' → บริษัท '+t.out)}
+      if(dif.length){add('bad','เวลาไม่ตรง',dif.join(' · '));if(t.in)fix.tin=effS;if(t.out)fix.tout=t.out;row.timeBad=true}
+    }else if(a.in||a.out){add('warn','ไม่มีเวลาในระบบบริษัท','แอปลงเวลา '+(a.in||'?')+'–'+(a.out||'?')+' แต่ระบบบริษัทไม่มีบันทึกเวลาวันนี้');row.timeBad=true}
+    // 1b) มาสาย/เริ่มงานช้า ต้องมีใบลาเท่าเวลาที่ขาด
+    if(!cHol&&scan&&eff!==null){const req=(eff-480)-(eff>=780?60:0);
+      if(req>0){const have=all.reduce((s,x)=>s+x.h,0)*60;
+        if(have+0.5<req)add('warn','ต้องมีใบลา','สแกน '+t.in+' → เริ่มงาน '+effS+' ต้องลา '+fh(req/60)+' ชม.'+(have?' (พบใบลา '+fh(have/60)+' ชม.)':' ยังไม่พบใบลาในระบบบริษัท')+' · เลือกประเภทลาในระบบบริษัท')}}
     // 2) OT
     if(logged||!scan){
-      if(aOT>0&&cOT===0)add('bad','ยังไม่ได้ขอ OT',scan?'ลง OT '+fh(aOT)+' ชม. ในแอป แต่ในระบบบริษัทไม่มี OT (ยังไม่ได้ขอ หรือยังไม่อนุมัติ)':'ลง OT '+fh(aOT)+' ชม. ในแอป แต่ไม่มีบันทึกเวลาในระบบบริษัท');
-      else if(aOT===0&&cOT>0)add('warn','OT ไม่อยู่ในแอป','ระบบบริษัทมี OT '+fh(cOT)+' ชม. แต่ในแอปยังไม่ได้ลง');
-      else if(aOT>0&&Math.abs(aOT-cOT)>=0.01)add('bad','OT ไม่ตรง','แอป '+fh(aOT)+' ชม. · บริษัท '+fh(cOT)+' ชม.');
+      if(aOT>0&&cOT===0){add('bad','ยังไม่ได้ขอ OT',scan?'ลง OT '+fh(aOT)+' ชม. ในแอป แต่ในระบบบริษัทไม่มี OT (ยังไม่ได้ขอ หรือยังไม่อนุมัติ)':'ลง OT '+fh(aOT)+' ชม. ในแอป แต่ไม่มีบันทึกเวลาในระบบบริษัท');row.otBad=true}
+      else if(aOT===0&&cOT>0){add('warn','OT ไม่อยู่ในแอป','ระบบบริษัทมี OT '+fh(cOT)+' ชม. แต่ในแอปยังไม่ได้ลง');row.otBad=true}
+      else if(aOT>0&&Math.abs(aOT-cOT)>=0.01){add('bad','OT ไม่ตรง','แอป '+fh(aOT)+' ชม. · บริษัท '+fh(cOT)+' ชม.');row.otBad=true}
     }
     // 3) ลาพักร้อน (ชั่วโมง)
     if(aVac>0&&cVac===0){add(pVac>0?'warn':'bad',pVac>0?'ใบลารออนุมัติ':'ยังไม่ได้ขอลา',pVac>0?'ลงลาพักร้อน '+fh(aVac)+' ชม. ในแอป ใบลาในระบบบริษัทยังไม่อนุมัติ':'ลงลาพักร้อน '+fh(aVac)+' ชม. ในแอป แต่ไม่พบใบลาที่อนุมัติในระบบบริษัท');if(!pVac)fix.vac=''}
     else if(aVac===0&&cVac>0){add('warn','ลาพักร้อนไม่อยู่ในแอป','ระบบบริษัทมีลาพักร้อน '+fh(cVac)+' ชม. แต่ในแอปยังไม่ได้ลง');fix.vac=cVac}
     else if(aVac>0&&Math.abs(aVac-cVac)>=0.01){add('bad','ลาพักร้อนไม่ตรง','แอป '+fh(aVac)+' ชม. · บริษัท '+fh(cVac)+' ชม.');fix.vac=cVac}
-    // 4) การลาประเภทอื่น เทียบกับสถานะในแอป ตามที่จับคู่ไว้
+    // 4) การลาประเภทอื่น เทียบสถานะในแอปตามที่จับคู่ไว้
     others.forEach(x=>{
       const code=map[lkey(x)];
       if(!code){if(!logged&&!scan)add('warn','ลาไม่อยู่ในแอป','ระบบบริษัทมี '+x.name+' '+fh(x.h)+' ชม. แต่ในแอปยังไม่ได้ลง')}
       else if(String(a.status||'').toUpperCase()!==code.toUpperCase()){add('bad','สถานะลาไม่ตรง','บริษัท: '+x.name+' '+fh(x.h)+' ชม. · แอป: '+(lab(a.status)||a.status||'ไม่ได้ลง'));fix.status=code.toUpperCase()}
     });
-    if(issues.length===n0)ok++;
+    // 5) ลากิจ ขั้นต่ำ 4 ชั่วโมง
+    all.forEach(x=>{if(x.name.indexOf('ลากิจ')>=0&&x.h<4)add('warn','ลากิจต่ำกว่า 4 ชม.',x.name+' '+fh(x.h)+' ชม. (ขั้นต่ำ 4 ชม.)')});
+    if(!row.issues.length)ok++;
+    rows.push(row);
   });
-  return {issues:issues,total:total,ok:ok};
+  return {rows:rows,issues:issues,total:total,ok:ok};
 }
 const WD=['อา','จ','อ','พ','พฤ','ศ','ส'];
 const dlab=iso=>iso.slice(8)+'/'+iso.slice(5,7)+' ('+WD[new Date(iso+'T00:00:00Z').getUTCDay()]+')';
@@ -304,17 +336,36 @@ async function goFix(it){
   if(f.status!==undefined)setStatus(f.status);
   if(Object.keys(f).length)say('ใส่ค่าจากระบบบริษัทให้แล้ว ตรวจแล้วกด บันทึก','ok');
 }
-function resultCards(r){
-  const days=new Set(r.issues.map(x=>x.d)).size;
+function resultCards(r,only,setOnly){
+  const bad=r.rows.filter(x=>x.issues.length),days=bad.length;
   const sum=h('div',{className:'card'},h('h3',{},'ผลตรวจ'),
     h('div',{className:'kv'},h('span',{},'วันที่ตรวจ'),h('b',{},r.total+' วัน')),
     h('div',{className:'kv'},h('span',{},'ตรงกัน'),h('b',{className:'ok'},r.ok+' วัน')),
     h('div',{className:'kv'},h('span',{},'ต้องแก้ในแอป'),h('b',{className:days?'bad':'ok'},days+' วัน')),
-    h('div',{className:'sub',style:'margin-top:8px'},'ยึดข้อมูลในไฟล์บริษัทเป็นหลัก · OT เทียบเฉพาะ OT1.5/OT2/OT3 (ไม่รวม OT1 ซึ่งเป็นชั่วโมงทำงานในวันหยุด)'));
-  const list=h('div',{className:'card'},h('h3',{},r.issues.length?'รายการที่ต้องแก้':'ไม่พบความผิดปกติ ✓'));
-  if(r.issues.length)list.append(h('div',{className:'sub'},'แตะรายการเพื่อไปแก้ไขในแอปของวันนั้น (ค่าจากบริษัทจะถูกใส่ให้ แล้วกด บันทึก)'));
-  r.issues.forEach(x=>list.append(h('div',{className:'ck '+x.lvl,onclick:()=>goFix(x)},h('b',{},dlab(x.d)),h('span',{className:'tg'},x.tag),h('i',{className:'go'},'›'),h('div',{},x.text))));
-  return [sum,list];
+    h('details',{style:'margin-top:8px'},h('summary',{className:'sub'},'กฎที่ใช้เทียบ (ตรวจให้ตรงกับที่บริษัทใช้)'),
+      ['ยึดข้อมูลในไฟล์บริษัทเป็นหลัก แก้ที่แอปให้ตรงก่อน','เข้างาน: สแกนไม่เกิน 08:00 = 08:00 · เกินปัดขึ้นทีละ 30 นาที (08:15→08:30, 08:45→09:00)','ลาครึ่งวันเช้า: สแกนก่อน 13:00 = 13:00 (12:00–13:00 พัก) · สายต้องมีใบลาเท่าเวลาที่ขาด','ออกงาน: 17:00–17:30 = เลิกปกติ · หลัง 17:30 นับ OT ทีละ 30 นาที (สรุปจากไฟล์ของคุณ)','OT เทียบเฉพาะ OT1.5/OT2/OT3 (ไม่รวม OT1 ซึ่งเป็นชั่วโมงทำงานในวันหยุด)','ลากิจขั้นต่ำ 4 ชม. · ประเภทวัน (ทำงาน/หยุด) ต้องตรงกับบริษัท'].map(t=>h('div',{className:'sub'},'• '+t))));
+  const chips=h('div',{className:'chips',style:'margin:0 0 10px'},
+    h('button',{className:'chip'+(only?' on':''),onclick:()=>setOnly(true)},'ต้องแก้ ('+days+')'),
+    h('button',{className:'chip'+(only?'':' on'),onclick:()=>setOnly(false)},'ทั้งหมด ('+r.rows.length+')'));
+  const tb=h('div',{className:'card tb'},chips);
+  const list=only?bad:r.rows;
+  if(!list.length)tb.append(h('div',{className:'sub'},'ไม่พบความผิดปกติ ✓'));
+  else{
+    if(only)tb.append(h('div',{className:'sub',style:'margin-bottom:6px'},'แตะวันที่เพื่อไปแก้ในแอป (ใส่ค่าจากบริษัทให้ แล้วกด บันทึก)'));
+    tb.append(h('div',{className:'tr hd'},h('div',{},'วัน'),h('div',{},'บริษัท (ใช้คิด)'),h('div',{},'แอป'),h('div',{},'OT')));
+    list.forEach(x=>{
+      const lv=x.leaves.length?'ลา '+x.leaves.map(l=>l.name.replace(/^ลา/,'')+' '+fh(l.h)).join(', '):'';
+      const wd=WD[new Date(x.d+'T00:00:00Z').getUTCDay()];
+      const tr=h('div',{className:'tr'+(x.hol?' hol':'')+(x.issues.length?' bd':''),onclick:()=>goFix(x)},
+        h('div',{className:'d'},h('b',{},x.d.slice(8)+' '+wd),h('small',{},x.hol?'หยุด':'')),
+        h('div',{className:'m'},x.cIn?x.cIn+'–'+(x.cOut||'?'):'—',h('small',{},(x.cScan&&x.cScan!==x.cIn?'สแกน '+x.cScan:'')+(lv?(x.cScan&&x.cScan!==x.cIn?' · ':'')+lv:''))),
+        h('div',{className:'m'+(x.timeBad?' x':'')},(x.aIn||x.aOut)?(x.aIn||'–')+'–'+(x.aOut||'–'):'—',h('small',{},x.aStatus||x.status||'')),
+        h('div',{className:'m'+(x.otBad?' x':'')},x.cOT?fh(x.cOT):'-',h('small',{},'แอป '+(x.aOT?fh(x.aOT):'-'))));
+      if(x.issues.length)tr.append(h('div',{className:'is'},x.issues.map(i=>h('div',{},h('span',{className:'tg '+i.lvl},i.tag),' '+i.text))));
+      tb.append(tr);
+    });
+  }
+  return [sum,tb];
 }
 async function showChk(out){
   out.replaceChildren(h('div',{className:'sub'},'กำลังเทียบกับข้อมูลในแอป…'));
@@ -323,16 +374,16 @@ async function showChk(out){
     const keys=leaveKeys(st.T,st.L,st.from,st.to),saved=lsGet('leavemap',{}),map={};
     keys.forEach(k=>{map[k]=saved[k]!==undefined?saved[k]:autoCode(k,codes)});
     let tol=Number(lsGet('chktol',0))||0;
-    const res=h('div',{}),draw=()=>res.replaceChildren(...resultCards(diffChk(st.T,st.L,log,st.from,st.to,{map:map,tol:tol,codes:codes})));
+    let only=true;const res=h('div',{}),draw=()=>res.replaceChildren(...resultCards(diffChk(st.T,st.L,log,st.from,st.to,{map:map,tol:tol,codes:codes}),only,v=>{only=v;draw()}));
     const set=h('div',{className:'card'},h('h3',{},'ช่วงที่ตรวจ '+dlab(st.from)+' – '+dlab(st.to)));
     const ts=h('select',{className:'sel',onchange:()=>{tol=+ts.value;lsSet('chktol',tol);draw()}},[0,5,10,15].map(m=>h('option',{value:m},m?m+' นาที':'ต้องตรงเป๊ะ')));ts.value=String(tol);
-    set.append(h('div',{className:'kv'},h('span',{},'เวลาเข้า-ออก ต่างได้'),ts));
+    set.append(h('div',{className:'kv'},h('span',{},'เวลาเข้า-ออก ต่างได้ (นาที)'),ts));
     if(keys.length){
       set.append(h('div',{className:'sub',style:'margin:10px 0 4px'},'จับคู่หัวข้อการลาในไฟล์บริษัท กับสถานะในแอป (จำค่าไว้ให้)'));
       keys.forEach(k=>{
         const sel=h('select',{className:'sel',onchange:()=>{map[k]=sel.value;const m=lsGet('leavemap',{});m[k]=sel.value;lsSet('leavemap',m);draw()}},
           [h('option',{value:''},'— ไม่เทียบ —')].concat(codes.map(c=>h('option',{value:String(c.code).toUpperCase()},c.code+' · '+c.label))));
-        sel.value=map[k]||'';set.append(h('div',{className:'kv'},h('span',{},k),sel));
+        sel.value=map[k]||'';const hint=k.indexOf('ส่วนตัว')>=0?'หักเบี้ยขยัน+หักเงินเดือน':k.indexOf('ธุระ')>=0?'หักเบี้ยขยัน ไม่หักเงินเดือน':'';set.append(h('div',{className:'kv'},h('span',{},k,hint?h('small',{style:'display:block;color:var(--mut)'},hint):''),sel));
       });
     }
     out.replaceChildren(set,res);draw();
